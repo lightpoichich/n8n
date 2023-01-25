@@ -2,6 +2,7 @@ import {
 	changePassword,
 	deleteUser,
 	getCurrentUser,
+	getInviteLink,
 	getUsers,
 	inviteUsers,
 	login,
@@ -18,14 +19,16 @@ import {
 	validatePasswordToken,
 	validateSignupToken,
 } from '@/api/users';
-import { PERSONALIZATION_MODAL_KEY, STORES } from '@/constants';
+import { EnterpriseEditionFeature, PERSONALIZATION_MODAL_KEY, STORES } from '@/constants';
 import {
+	ICredentialsResponse,
 	IInviteResponse,
 	IPersonalizationLatestVersion,
 	IUser,
 	IUserResponse,
 	IUsersState,
 } from '@/Interface';
+import { getCredentialPermissions } from '@/permissions';
 import { getPersonalizedNodeTypes, isAuthorized, PERMISSIONS, ROLE } from '@/utils';
 import { defineStore } from 'pinia';
 import Vue from 'vue';
@@ -35,6 +38,7 @@ import { useUIStore } from './ui';
 
 const isDefaultUser = (user: IUserResponse | null) =>
 	Boolean(user && user.isPending && user.globalRole && user.globalRole.name === ROLE.Owner);
+
 const isPendingUser = (user: IUserResponse | null) => Boolean(user && user.isPending);
 
 export const useUsersStore = defineStore(STORES.USERS, {
@@ -55,11 +59,14 @@ export const useUsersStore = defineStore(STORES.USERS, {
 		getUserById(state) {
 			return (userId: string): IUser | null => state.users[userId];
 		},
-		globalRoleName(): string {
-			return this.currentUser?.globalRole?.name || '';
+		globalRoleName(): IRole {
+			return this.currentUser?.globalRole?.name ?? 'default';
 		},
 		canUserDeleteTags(): boolean {
 			return isAuthorized(PERMISSIONS.TAGS.CAN_DELETE_TAGS, this.currentUser);
+		},
+		canUserActivateLicense(): boolean {
+			return isAuthorized(PERMISSIONS.USAGE.CAN_ACTIVATE_LICENSE, this.currentUser);
 		},
 		canUserAccessSidebarUserInfo() {
 			if (this.currentUser) {
@@ -87,6 +94,13 @@ export const useUsersStore = defineStore(STORES.USERS, {
 			}
 			return getPersonalizedNodeTypes(answers);
 		},
+		isResourceAccessible() {
+			return (resource: ICredentialsResponse): boolean => {
+				const permissions = getCredentialPermissions(this.currentUser, resource);
+
+				return permissions.use;
+			};
+		},
 	},
 	actions: {
 		addUsers(users: IUserResponse[]) {
@@ -103,7 +117,7 @@ export const useUsersStore = defineStore(STORES.USERS, {
 						: undefined,
 					isDefaultUser: isDefaultUser(updatedUser),
 					isPendingUser: isPendingUser(updatedUser),
-					isOwner: Boolean(updatedUser.globalRole && updatedUser.globalRole.name === ROLE.Owner),
+					isOwner: updatedUser.globalRole?.name === ROLE.Owner,
 				};
 				Vue.set(this.users, user.id, user);
 			});
@@ -242,6 +256,10 @@ export const useUsersStore = defineStore(STORES.USERS, {
 		async reinviteUser(params: { id: string }): Promise<void> {
 			const rootStore = useRootStore();
 			await reinvite(rootStore.getRestApiContext, params);
+		},
+		async getUserInviteLink(params: { id: string }): Promise<{ link: string }> {
+			const rootStore = useRootStore();
+			return await getInviteLink(rootStore.getRestApiContext, params);
 		},
 		async submitPersonalizationSurvey(results: IPersonalizationLatestVersion): Promise<void> {
 			const rootStore = useRootStore();

@@ -15,6 +15,7 @@ import {
 	INodeUpdatePropertiesInformation,
 	IPushDataExecutionFinished,
 	IPushDataNodeExecuteAfter,
+	IPushDataUnsavedExecutionFinished,
 	IUpdateInformation,
 	IUsedCredential,
 	IWorkflowDb,
@@ -33,10 +34,12 @@ import {
 	INodeCredentialsDetails,
 	INodeExecutionData,
 	INodeIssueData,
+	INodeParameters,
 	IPinData,
 	IRunData,
 	ITaskData,
 	IWorkflowSettings,
+	NodeHelpers,
 } from 'n8n-workflow';
 import Vue from 'vue';
 
@@ -44,6 +47,7 @@ import { useRootStore } from './n8nRootStore';
 import {
 	getActiveWorkflows,
 	getCurrentExecutions,
+	getExecutionData,
 	getFinishedExecutions,
 	getNewWorkflow,
 	getWorkflows,
@@ -223,6 +227,10 @@ export const useWorkflowsStore = defineStore(STORES.WORKFLOWS, {
 				this.nodeMetadata[nodeName] && this.nodeMetadata[nodeName].parametersLastUpdatedAt;
 		},
 
+		isNodePristine(): (name: string) => boolean {
+			return (nodeName: string) =>
+				this.nodeMetadata[nodeName] === undefined || this.nodeMetadata[nodeName].pristine === true;
+		},
 		// Executions getters
 		getExecutionDataById(): (id: string) => IExecutionsSummary | undefined {
 			return (id: string): IExecutionsSummary | undefined =>
@@ -276,7 +284,7 @@ export const useWorkflowsStore = defineStore(STORES.WORKFLOWS, {
 
 			this.workflow = createEmptyWorkflow();
 
-			if (settingsStore.isEnterpriseFeatureEnabled(EnterpriseEditionFeature.WorkflowSharing)) {
+			if (settingsStore.isEnterpriseFeatureEnabled(EnterpriseEditionFeature.Sharing)) {
 				Vue.set(this.workflow, 'ownedBy', usersStore.currentUser);
 			}
 		},
@@ -727,7 +735,12 @@ export const useWorkflowsStore = defineStore(STORES.WORKFLOWS, {
 				// TODO: Check if there is an error or whatever that is supposed to be returned
 				return;
 			}
+
 			this.workflow.nodes.push(nodeData);
+			// Init node metadata
+			if (!this.nodeMetadata[nodeData.name]) {
+				Vue.set(this.nodeMetadata, nodeData.name, {});
+			}
 		},
 
 		removeNode(node: INodeUi): void {
@@ -817,6 +830,7 @@ export const useWorkflowsStore = defineStore(STORES.WORKFLOWS, {
 			if (!this.nodeMetadata[node.name]) {
 				Vue.set(this.nodeMetadata, node.name, {});
 			}
+
 			Vue.set(this.nodeMetadata[node.name], 'parametersLastUpdatedAt', Date.now());
 		},
 
@@ -824,8 +838,18 @@ export const useWorkflowsStore = defineStore(STORES.WORKFLOWS, {
 			const latestNode = this.workflow.nodes.findLast(
 				(node) => node.type === updateInformation.key,
 			) as INodeUi;
+			const nodeType = useNodeTypesStore().getNodeType(latestNode.type);
+			if (!nodeType) return;
 
-			if (latestNode) this.setNodeParameters({ ...updateInformation, name: latestNode.name }, true);
+			const nodeParams = NodeHelpers.getNodeParameters(
+				nodeType.properties,
+				updateInformation.value as INodeParameters,
+				true,
+				false,
+				latestNode,
+			);
+
+			if (latestNode) this.setNodeParameters({ value: nodeParams, name: latestNode.name }, true);
 		},
 
 		addNodeExecutionData(pushData: IPushDataNodeExecuteAfter): void {
@@ -873,7 +897,9 @@ export const useWorkflowsStore = defineStore(STORES.WORKFLOWS, {
 			}
 			this.activeExecutions.unshift(newActiveExecution);
 		},
-		finishActiveExecution(finishedActiveExecution: IPushDataExecutionFinished): void {
+		finishActiveExecution(
+			finishedActiveExecution: IPushDataExecutionFinished | IPushDataUnsavedExecutionFinished,
+		): void {
 			// Find the execution to set to finished
 			const activeExecution = this.activeExecutions.find((execution) => {
 				return execution.id === finishedActiveExecution.executionId;
@@ -923,14 +949,29 @@ export const useWorkflowsStore = defineStore(STORES.WORKFLOWS, {
 						requestFilter,
 					);
 				}
-				// context.commit('setTotalFinishedExecutionsCount', finishedExecutions.count);
+				this.finishedExecutionsCount = finishedExecutions.count;
 				return [...activeExecutions, ...(finishedExecutions.results || [])];
 			} catch (error) {
 				throw error;
 			}
 		},
+		async fetchExecutionDataById(executionId: string): Promise<IExecutionResponse | null> {
+			const rootStore = useRootStore();
+			return await getExecutionData(rootStore.getRestApiContext, executionId);
+		},
 		deleteExecution(execution: IExecutionsSummary): void {
 			this.currentWorkflowExecutions.splice(this.currentWorkflowExecutions.indexOf(execution), 1);
+		},
+		addToCurrentExecutions(executions: IExecutionsSummary[]): void {
+			executions.forEach((execution) => {
+				const exists = this.currentWorkflowExecutions.find((ex) => ex.id === execution.id);
+				if (!exists && execution.workflowId === this.workflowId) {
+					this.currentWorkflowExecutions.push(execution);
+				}
+			});
+		},
+		setNodePristine(nodeName: string, isPristine: boolean): void {
+			Vue.set(this.nodeMetadata[nodeName], 'pristine', isPristine);
 		},
 	},
 });

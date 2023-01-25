@@ -10,7 +10,7 @@ import {
 	LoggerProxy,
 	NodeHelpers,
 } from 'n8n-workflow';
-import { FindManyOptions, FindOneOptions, In } from 'typeorm';
+import { FindManyOptions, FindOptionsWhere, In } from 'typeorm';
 
 import * as Db from '@/Db';
 import * as ResponseHelper from '@/ResponseHelper';
@@ -20,7 +20,7 @@ import { CREDENTIAL_BLANKING_VALUE, RESPONSE_ERROR_MESSAGES } from '@/constants'
 import { CredentialsEntity } from '@db/entities/CredentialsEntity';
 import { SharedCredentials } from '@db/entities/SharedCredentials';
 import { validateEntity } from '@/GenericHelpers';
-import { externalHooks } from '../Server';
+import { ExternalHooks } from '@/ExternalHooks';
 
 import type { User } from '@db/entities/User';
 import type { CredentialRequest } from '@/requests';
@@ -28,11 +28,12 @@ import { CredentialTypes } from '@/CredentialTypes';
 
 export class CredentialsService {
 	static async get(
-		credential: Partial<ICredentialsDb>,
+		where: FindOptionsWhere<ICredentialsDb>,
 		options?: { relations: string[] },
-	): Promise<ICredentialsDb | undefined> {
-		return Db.collections.Credentials.findOne(credential, {
+	): Promise<ICredentialsDb | null> {
+		return Db.collections.Credentials.findOne({
 			relations: options?.relations,
+			where,
 		});
 	}
 
@@ -59,28 +60,19 @@ export class CredentialsService {
 		}
 
 		// if member, return credentials owned by or shared with member
-
-		const whereConditions: FindManyOptions = {
+		const userSharings = await Db.collections.SharedCredentials.find({
 			where: {
-				user,
+				userId: user.id,
+				...(options?.roles?.length ? { role: { name: In(options.roles) } } : {}),
 			},
-		};
-
-		if (options?.roles?.length) {
-			whereConditions.where = {
-				...whereConditions.where,
-				role: { name: In(options.roles) },
-			} as FindManyOptions;
-			whereConditions.relations = ['role'];
-		}
-
-		const userSharings = await Db.collections.SharedCredentials.find(whereConditions);
+			relations: options?.roles?.length ? ['role'] : [],
+		});
 
 		return Db.collections.Credentials.find({
 			select: SELECT_FIELDS,
 			relations: options?.relations,
 			where: {
-				id: In(userSharings.map((x) => x.credentialId)),
+				id: In(userSharings.map((x) => x.credentialsId)),
 			},
 		});
 	}
@@ -94,46 +86,26 @@ export class CredentialsService {
 	 */
 	static async getSharing(
 		user: User,
-		credentialId: number | string,
+		credentialId: string,
 		relations: string[] = ['credentials'],
 		{ allowGlobalOwner } = { allowGlobalOwner: true },
-	): Promise<SharedCredentials | undefined> {
-		const options: FindOneOptions = {
-			where: {
-				credentials: { id: credentialId },
-			},
-		};
+	): Promise<SharedCredentials | null> {
+		const where: FindOptionsWhere<SharedCredentials> = { credentialsId: credentialId };
 
 		// Omit user from where if the requesting user is the global
 		// owner. This allows the global owner to view and delete
 		// credentials they don't own.
 		if (!allowGlobalOwner || user.globalRole.name !== 'owner') {
-			options.where = {
-				...options.where,
-				user: { id: user.id },
+			Object.assign(where, {
+				userId: user.id,
 				role: { name: 'owner' },
-			} as FindOneOptions;
+			});
 			if (!relations.includes('role')) {
 				relations.push('role');
 			}
 		}
 
-		if (relations?.length) {
-			options.relations = relations;
-		}
-
-		return Db.collections.SharedCredentials.findOne(options);
-	}
-
-	static createCredentialsFromCredentialsEntity(
-		credential: CredentialsEntity,
-		encrypt = false,
-	): Credentials {
-		const { id, name, type, nodesAccess, data } = credential;
-		if (encrypt) {
-			return new Credentials({ id: null, name }, type, nodesAccess);
-		}
-		return new Credentials({ id: id.toString(), name }, type, nodesAccess, data);
+		return Db.collections.SharedCredentials.findOne({ where, relations });
 	}
 
 	static async prepareCreateData(
@@ -143,7 +115,7 @@ export class CredentialsService {
 		const { id, ...rest } = data;
 
 		// This saves us a merge but requires some type casting. These
-		// types are compatiable for this case.
+		// types are compatible for this case.
 		const newCredentials = Db.collections.Credentials.create(
 			rest as ICredentialsDb,
 		) as CredentialsEntity;
@@ -193,11 +165,11 @@ export class CredentialsService {
 
 	static createEncryptedData(
 		encryptionKey: string,
-		credentialsId: string | null,
+		credentialId: string | null,
 		data: CredentialsEntity,
 	): ICredentialsDb {
 		const credentials = new Credentials(
-			{ id: credentialsId, name: data.name },
+			{ id: credentialId, name: data.name },
 			data.type,
 			data.nodesAccess,
 		);
@@ -233,15 +205,15 @@ export class CredentialsService {
 	static async update(
 		credentialId: string,
 		newCredentialData: ICredentialsDb,
-	): Promise<ICredentialsDb | undefined> {
-		await externalHooks.run('credentials.update', [newCredentialData]);
+	): Promise<ICredentialsDb | null> {
+		await ExternalHooks().run('credentials.update', [newCredentialData]);
 
 		// Update the credentials in DB
 		await Db.collections.Credentials.update(credentialId, newCredentialData);
 
 		// We sadly get nothing back from "update". Neither if it updated a record
 		// nor the new value. So query now the updated entry.
-		return Db.collections.Credentials.findOne(credentialId);
+		return Db.collections.Credentials.findOneBy({ id: credentialId });
 	}
 
 	static async save(
@@ -253,9 +225,9 @@ export class CredentialsService {
 		const newCredential = new CredentialsEntity();
 		Object.assign(newCredential, credential, encryptedData);
 
-		await externalHooks.run('credentials.create', [encryptedData]);
+		await ExternalHooks().run('credentials.create', [encryptedData]);
 
-		const role = await Db.collections.Role.findOneOrFail({
+		const role = await Db.collections.Role.findOneByOrFail({
 			name: 'owner',
 			scope: 'credential',
 		});
@@ -285,7 +257,7 @@ export class CredentialsService {
 	}
 
 	static async delete(credentials: CredentialsEntity): Promise<void> {
-		await externalHooks.run('credentials.delete', [credentials.id]);
+		await ExternalHooks().run('credentials.delete', [credentials.id]);
 
 		await Db.collections.Credentials.remove(credentials);
 	}

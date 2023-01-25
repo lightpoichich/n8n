@@ -6,6 +6,10 @@ import { OptionsWithUri } from 'request';
 
 import { Connector, ElasticSecurityApiCredentials } from './types';
 
+export function tolerateTrailingSlash(baseUrl: string) {
+	return baseUrl.endsWith('/') ? baseUrl.substr(0, baseUrl.length - 1) : baseUrl;
+}
+
 export async function elasticSecurityApiRequest(
 	this: IExecuteFunctions | ILoadOptionsFunctions,
 	method: string,
@@ -44,7 +48,7 @@ export async function elasticSecurityApiRequest(
 	}
 
 	try {
-		return this.helpers.request!(options);
+		return await this.helpers.request(options);
 	} catch (error) {
 		if (error?.error?.error === 'Not Acceptable' && error?.error?.message) {
 			error.error.error = `${error.error.error}: ${error.error.message}`;
@@ -137,8 +141,4 @@ export async function getVersion(this: IExecuteFunctions, endpoint: string) {
 	}
 
 	return version;
-}
-
-export function tolerateTrailingSlash(baseUrl: string) {
-	return baseUrl.endsWith('/') ? baseUrl.substr(0, baseUrl.length - 1) : baseUrl;
 }

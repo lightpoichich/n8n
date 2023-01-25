@@ -13,6 +13,14 @@ import moment from 'moment';
 
 import * as losslessJSON from 'lossless-json';
 
+function convertLosslessNumber(key: any, value: any) {
+	if (value?.isLosslessNumber) {
+		return value.toString();
+	} else {
+		return value;
+	}
+}
+
 /**
  * Make an authenticated API request to GoToWebinar.
  */
@@ -57,7 +65,7 @@ export async function goToWebinarApiRequest(
 	}
 
 	try {
-		const response = await this.helpers.requestOAuth2!.call(this, 'goToWebinarOAuth2Api', options, {
+		const response = await this.helpers.requestOAuth2.call(this, 'goToWebinarOAuth2Api', options, {
 			tokenExpiredStatusCode: 403,
 		});
 
@@ -274,12 +282,4 @@ export async function loadRegistranMultiChoiceQuestions(this: ILoadOptionsFuncti
 	});
 
 	return returnData;
-}
-
-function convertLosslessNumber(key: any, value: any) {
-	if (value?.isLosslessNumber) {
-		return value.toString();
-	} else {
-		return value;
-	}
 }

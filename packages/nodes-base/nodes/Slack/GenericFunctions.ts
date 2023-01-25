@@ -20,7 +20,6 @@ export async function slackApiRequest(
 	query: object = {},
 	headers: IDataObject | undefined = undefined,
 	option: IDataObject = {},
-	// tslint:disable-next-line:no-any
 ): Promise<any> {
 	const authenticationMethod = this.getNodeParameter('authentication', 0, 'accessToken') as string;
 	let options: OptionsWithUri = {
@@ -66,7 +65,8 @@ export async function slackApiRequest(
 						0,
 					)}'`,
 					{
-						description: `Hint: Upgrate to the Slack plan that includes the funcionality you want to use.`,
+						description:
+							'Hint: Upgrate to the Slack plan that includes the funcionality you want to use.',
 					},
 				);
 			}

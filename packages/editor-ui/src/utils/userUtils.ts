@@ -116,6 +116,13 @@ export const PERMISSIONS: IUserPermissions = {
 			},
 		},
 	},
+	USAGE: {
+		CAN_ACTIVATE_LICENSE: {
+			allow: {
+				role: [ROLE.Owner, ROLE.Default],
+			},
+		},
+	},
 };
 
 /**
@@ -135,7 +142,7 @@ export const isAuthorized = (permissions: IPermissions, currentUser: IUser | nul
 			return false;
 		}
 
-		if (currentUser && currentUser.globalRole) {
+		if (currentUser?.globalRole?.name) {
 			const role = currentUser.isDefaultUser ? ROLE.Default : currentUser.globalRole.name;
 			if (permissions.deny.role && permissions.deny.role.includes(role)) {
 				return false;
@@ -156,7 +163,7 @@ export const isAuthorized = (permissions: IPermissions, currentUser: IUser | nul
 			return true;
 		}
 
-		if (currentUser && currentUser.globalRole) {
+		if (currentUser?.globalRole?.name) {
 			const role = currentUser.isDefaultUser ? ROLE.Default : currentUser.globalRole.name;
 			if (permissions.allow.role && permissions.allow.role.includes(role)) {
 				return true;

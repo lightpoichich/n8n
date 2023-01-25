@@ -1,3 +1,4 @@
+import { META_KEY } from '../constants';
 import { BasePage } from './base';
 
 export class WorkflowPage extends BasePage {
@@ -23,11 +24,8 @@ export class WorkflowPage extends BasePage {
 		canvasNodes: () => cy.getByTestId('canvas-node'),
 		canvasNodeByName: (nodeName: string) =>
 			this.getters.canvasNodes().filter(`:contains("${nodeName}")`),
-		ndvParameterInput: (parameterName: string) =>
-			cy.getByTestId(`parameter-input-${parameterName}`),
-		ndvOutputPanel: () => cy.getByTestId('output-panel'),
-		ndvRunDataPaneHeader: () => cy.getByTestId('run-data-pane-header'),
-		successToast: () => cy.get('.el-notification__title'),
+		successToast: () => cy.get('.el-notification .el-icon-success').parent(),
+		errorToast: () => cy.get('.el-notification .el-icon-error'),
 		activatorSwitch: () => cy.getByTestId('workflow-activate-switch'),
 		workflowMenu: () => cy.getByTestId('workflow-menu'),
 		firstStepButton: () => cy.getByTestId('canvas-add-button'),
@@ -42,8 +40,7 @@ export class WorkflowPage extends BasePage {
 		zoomToFitButton: () => cy.getByTestId('zoom-to-fit'),
 		nodeEndpoints: () => cy.get('.jtk-endpoint-connected'),
 		disabledNodes: () => cy.get('.node-box.disabled'),
-		nodeNameContainerNDV: () => cy.getByTestId('node-title-container'),
-		nodeRenameInput: () => cy.getByTestId('node-rename-input'),
+		selectedNodes: () => this.getters.canvasNodes().filter('.jtk-drag-selected'),
 		// Workflow menu items
 		workflowMenuItemDuplicate: () => cy.getByTestId('workflow-menu-item-duplicate'),
 		workflowMenuItemDownload: () => cy.getByTestId('workflow-menu-item-download'),
@@ -69,8 +66,15 @@ export class WorkflowPage extends BasePage {
 		workflowSettingsSaveButton: () =>
 			cy.getByTestId('workflow-settings-save-button').find('button'),
 
+		duplicateWorkflowModal: () => cy.getByTestId('duplicate-modal'),
+		nodeViewBackground: () => cy.getByTestId('node-view-background'),
+		nodeView: () => cy.getByTestId('node-view'),
 		inlineExpressionEditorInput: () => cy.getByTestId('inline-expression-editor-input'),
 		inlineExpressionEditorOutput: () => cy.getByTestId('inline-expression-editor-output'),
+		zoomInButton: () => cy.getByTestId('zoom-in-button'),
+		zoomOutButton: () => cy.getByTestId('zoom-out-button'),
+		resetZoomButton: () => cy.getByTestId('reset-zoom-button'),
+		executeWorkflowButton: () => cy.getByTestId('execute-workflow-button'),
 	};
 	actions = {
 		visit: () => {
@@ -83,13 +87,14 @@ export class WorkflowPage extends BasePage {
 			this.getters.nodeCreatorSearchBar().type('{enter}');
 			cy.get('body').type('{esc}');
 		},
-		addNodeToCanvas: (nodeDisplayName: string) => {
+		addNodeToCanvas: (nodeDisplayName: string, preventNdvClose?: boolean) => {
 			this.getters.nodeCreatorPlusButton().click();
 			this.getters.nodeCreatorSearchBar().type(nodeDisplayName);
 			this.getters.nodeCreatorSearchBar().type('{enter}');
-			cy.get('body').type('{esc}');
+
+			if (!preventNdvClose) cy.get('body').type('{esc}');
 		},
-		openNodeNdv: (nodeTypeName: string) => {
+		openNode: (nodeTypeName: string) => {
 			this.getters.canvasNodeByName(nodeTypeName).dblclick();
 		},
 		openExpressionEditorModal: () => {
@@ -99,19 +104,6 @@ export class WorkflowPage extends BasePage {
 		openInlineExpressionEditor: () => {
 			cy.contains('Expression').invoke('show').click();
 			this.getters.inlineExpressionEditorInput().click();
-		},
-		typeIntoParameterInput: (parameterName: string, content: string) => {
-			this.getters.ndvParameterInput(parameterName).type(content);
-		},
-		selectOptionInParameterDropdown: (parameterName: string, content: string) => {
-			this.getters
-				.ndvParameterInput(parameterName)
-				.find('.option-headline')
-				.contains(content)
-				.click();
-		},
-		executeNodeFromNdv: () => {
-			cy.contains('Execute node').click();
 		},
 		openWorkflowMenu: () => {
 			this.getters.workflowMenu().click();
@@ -147,23 +139,28 @@ export class WorkflowPage extends BasePage {
 			cy.getByTestId('zoom-to-fit').click();
 		},
 		hitUndo: () => {
-			const metaKey = Cypress.platform === 'darwin' ? '{meta}' : '{ctrl}';
-			cy.get('body').type(metaKey, { delay: 500, release: false }).type('z');
+			cy.get('body').type(META_KEY, { delay: 500, release: false }).type('z');
 		},
 		hitRedo: () => {
-			const metaKey = Cypress.platform === 'darwin' ? '{meta}' : '{ctrl}';
 			cy.get('body')
-				.type(metaKey, { delay: 500, release: false })
+				.type(META_KEY, { delay: 500, release: false })
 				.type('{shift}', { release: false })
 				.type('z');
 		},
 		selectAll: () => {
-			const metaKey = Cypress.platform === 'darwin' ? '{meta}' : '{ctrl}';
-			cy.get('body').type(metaKey, { delay: 500, release: false }).type('a');
+			cy.get('body').type(META_KEY, { delay: 500, release: false }).type('a');
 		},
 		hitDisableNodeShortcut: () => {
-			const metaKey = Cypress.platform === 'darwin' ? '{meta}' : '{ctrl}';
-			cy.get('body').type(metaKey, { delay: 500, release: false }).type('d');
+			cy.get('body').type(META_KEY, { delay: 500, release: false }).type('d');
+		},
+		hitCopy: () => {
+			cy.get('body').type(META_KEY, { delay: 500, release: false }).type('c');
+		},
+		hitPaste: () => {
+			cy.get('body').type(META_KEY, { delay: 500, release: false }).type('P');
+		},
+		executeWorkflow: () => {
+			this.getters.executeWorkflowButton().click();
 		},
 	};
 }

@@ -4,6 +4,12 @@ import { IExecuteFunctions, ILoadOptionsFunctions } from 'n8n-core';
 
 import { IDataObject, IHookFunctions, IWebhookFunctions, NodeApiError } from 'n8n-workflow';
 
+/**
+ * Return the base API URL based on the user's environment.
+ */
+const getBaseUrl = ({ environment, domain, subdomain }: ERPNextApiCredentials) =>
+	environment === 'cloudHosted' ? `https://${subdomain}.erpnext.com` : domain;
+
 export async function erpNextApiRequest(
 	this: IExecuteFunctions | IWebhookFunctions | IHookFunctions | ILoadOptionsFunctions,
 	method: string,
@@ -39,7 +45,7 @@ export async function erpNextApiRequest(
 		delete options.qs;
 	}
 	try {
-		return this.helpers.requestWithAuthentication.call(this, 'erpNextApi', options);
+		return await this.helpers.requestWithAuthentication.call(this, 'erpNextApi', options);
 	} catch (error) {
 		if (error.statusCode === 403) {
 			throw new NodeApiError(this.getNode(), { message: 'DocType unavailable.' });
@@ -76,12 +82,6 @@ export async function erpNextApiRequestAllItems(
 
 	return returnData;
 }
-
-/**
- * Return the base API URL based on the user's environment.
- */
-const getBaseUrl = ({ environment, domain, subdomain }: ERPNextApiCredentials) =>
-	environment === 'cloudHosted' ? `https://${subdomain}.erpnext.com` : domain;
 
 type ERPNextApiCredentials = {
 	apiKey: string;
